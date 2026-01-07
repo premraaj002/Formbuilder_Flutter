@@ -428,7 +428,7 @@ class _SignupScreenState extends State<SignupScreen> {
                         child: TextFormField(
                           controller: _emailController,
                           style: GoogleFonts.inter(
-                            color: isDark ? Colors.white : Colors.white,
+                            color: isDark ? Colors.white : Colors.black87,
                           ),
                           decoration: InputDecoration(
                             hintText: 'Email',
@@ -476,7 +476,7 @@ class _SignupScreenState extends State<SignupScreen> {
                         child: TextFormField(
                           controller: _passwordController,
                           style: GoogleFonts.inter(
-                            color: isDark ? Colors.white : Colors.white,
+                            color: isDark ? Colors.white : Colors.black87,
                           ),
                           decoration: InputDecoration(
                             hintText: 'Password',

@@ -238,7 +238,7 @@ class _StudentLoginScreenState extends State<StudentLoginScreen> {
                         child: TextFormField(
                           controller: _emailController,
                           style: GoogleFonts.inter(
-                            color: isDark ? Colors.white : Colors.white,
+                            color: isDark ? Colors.white : Colors.black87,
                             fontSize: 16,
                           ),
                           decoration: InputDecoration(
@@ -287,7 +287,7 @@ class _StudentLoginScreenState extends State<StudentLoginScreen> {
                         child: TextFormField(
                           controller: _passwordController,
                           style: GoogleFonts.inter(
-                            color: isDark ? Colors.white : Colors.white,
+                            color: isDark ? Colors.white : Colors.black87,
                             fontSize: 16,
                           ),
                           decoration: InputDecoration(
