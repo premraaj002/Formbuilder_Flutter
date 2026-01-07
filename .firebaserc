@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "prem-s-fprm"
+  },
+  "targets": {
+    "prem-s-fprm": {
+      "hosting": {
+        "mvitforms": [
+          "mvitforms"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

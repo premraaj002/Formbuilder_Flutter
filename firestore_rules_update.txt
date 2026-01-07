@@ -1,0 +1,54 @@
+// Updated Firestore Security Rules
+// Add these rules to your Firebase Console -> Firestore Database -> Rules
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Existing rules for users collection
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Existing rules for forms collection
+    match /forms/{formId} {
+      allow read: if true; // Anyone can read forms
+      allow write: if request.auth != null && 
+        (resource == null || resource.data.createdBy == request.auth.uid);
+    }
+    
+    // Existing rules for responses collection
+    match /responses/{responseId} {
+      allow read: if request.auth != null && 
+        (request.auth.uid == resource.data.userId || 
+         request.auth.uid == resource.data.formCreatedBy);
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.userId;
+    }
+    
+    // NEW RULES: Support tickets collection
+    match /support_tickets/{ticketId} {
+      // Students can create tickets and read their own tickets
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.userId;
+      
+      // Students can read their own tickets
+      // Admins can read all tickets (you can add admin check here)
+      allow read: if request.auth != null && 
+        (request.auth.uid == resource.data.userId);
+      
+      // Only allow updates to status field by admins (optional - for admin management)
+      // For now, allowing users to update their own tickets
+      allow update: if request.auth != null && 
+        request.auth.uid == resource.data.userId;
+      
+      // Prevent deletion of tickets (optional security measure)
+      allow delete: if false;
+    }
+    
+    // Allow all other operations for authenticated users (adjust as needed)
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "prem-s-fprm",
+          "appId": "1:341672044377:android:0374a15d47b1ad964b0e48",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "prem-s-fprm",
+          "configurations": {
+            "android": "1:341672044377:android:0374a15d47b1ad964b0e48",
+            "ios": "1:341672044377:ios:77e1588318d233ae4b0e48",
+            "macos": "1:341672044377:ios:77e1588318d233ae4b0e48",
+            "web": "1:341672044377:web:3aa6b70c17693b0a4b0e48",
+            "windows": "1:341672044377:web:b084cc3433e3baad4b0e48"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "hosting": [
+    {
+      "site": "mvitforms",
+      "public": "build/web",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    {
+      "site": "prem-s-fprm",
+      "public": "build/web",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "341672044377",
+    "project_id": "prem-s-fprm",
+    "storage_bucket": "prem-s-fprm.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:341672044377:android:0374a15d47b1ad964b0e48",
+        "android_client_info": {
+          "package_name": "com.example.adminapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCTH2_bPpEejArveKQkUwb40-NjfJiFg5E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2563eb;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3b82f6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="50" cy="50" r="45" fill="url(#logoGradient)" stroke="#1e40af" stroke-width="2"/>
+  
+  <!-- Form icon elements -->
+  <rect x="25" y="25" width="50" height="40" rx="4" fill="white" opacity="0.9"/>
+  <rect x="30" y="35" width="30" height="2" fill="#2563eb" opacity="0.8"/>
+  <rect x="30" y="42" width="25" height="2" fill="#2563eb" opacity="0.6"/>
+  <rect x="30" y="49" width="35" height="2" fill="#2563eb" opacity="0.8"/>
+  <rect x="30" y="56" width="20" height="2" fill="#2563eb" opacity="0.6"/>
+  
+  <!-- Modern accent -->
+  <circle cx="65" cy="30" r="3" fill="#10b981"/>
+  <text x="50" y="85" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="12" font-weight="bold">MVIT</text>
+</svg>

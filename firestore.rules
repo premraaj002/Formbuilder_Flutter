@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users can read/write their own user document
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Forms and quizzes - authenticated users can create/update/delete their own
+    match /forms/{formId} {
+      // Allow public read access to published forms
+      allow read: if resource.data.isPublished == true;
+      // Allow authenticated users to read/write their own forms
+      allow read, write: if request.auth != null && request.auth.uid == resource.data.createdBy;
+      // Allow authenticated users to create new forms
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.createdBy;
+    }
+    
+    // Responses - authenticated users can submit responses
+    match /responses/{responseId} {
+      // Allow authenticated users to create responses
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      // Allow form owners to read responses to their forms
+      allow read: if request.auth != null && request.auth.uid == resource.data.formOwnerId;
+      // Allow users to read their own responses
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+    
+    // Quiz responses - authenticated users can submit quiz responses
+    match /quiz_responses/{responseId} {
+      // Allow authenticated users to create quiz responses
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      // Allow quiz owners to read responses to their quizzes
+      allow read: if request.auth != null && request.auth.uid == resource.data.quizOwnerId;
+      // Allow users to read their own responses
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+  }
+}
