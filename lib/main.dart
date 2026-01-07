@@ -19,7 +19,7 @@ import 'screens/student_login.dart'; // Import the student login page
 import 'screens/password_reset_confirmation_page.dart'; // Password reset confirm
 import 'screens/landing_page.dart'; // Import the landing page
 
-// Global navigator key for deep link navigation
+// Global navigator key for deep link navigation1
 GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>(); // For deep link navigation
 
 void main() async {
