@@ -158,7 +158,7 @@ class MyApp extends StatelessWidget {
     // Theme is handled by ThemeNotifier - no need to sync here
     
     return MaterialApp(
-      title: 'MVIT Forms',
+      title: 'Formbuilder',
       debugShowCheckedModeBanner: false,
       themeMode: themeNotifier.themeMode,
       theme: AppTheme.light,

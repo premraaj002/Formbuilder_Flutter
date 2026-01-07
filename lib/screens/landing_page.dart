@@ -141,7 +141,7 @@ class _LandingPageState extends State<LandingPage>
                 SizedBox(width: isSmallScreen ? 8 : 10),
                 Flexible(
                   child: Text(
-                    isSmallScreen ? 'Mvit' : 'Mvit Forms',
+                    isSmallScreen ? 'Formbuilder' : 'Formbuilder',
                     style: GoogleFonts.poppins(
                       fontSize: isSmallScreen ? 20 : 24,
                       fontWeight: FontWeight.bold,
@@ -462,7 +462,7 @@ class _LandingPageState extends State<LandingPage>
             maxWidth: screenWidth > 800 ? 600 : double.infinity,
           ),
           child: Text(
-            'Build stunning, responsive forms with advanced analytics, real-time collaboration, and seamless integrations. Transform your data collection experience with Mvit Forms.',
+            'Build stunning, responsive forms with advanced analytics, real-time collaboration, and seamless integrations. Transform your data collection experience with Formbuilder.',
             style: GoogleFonts.inter(
               fontSize: isSmallScreen ? 16 : 18,
               color: isDark ? Colors.grey[300] : Colors.grey[600],
@@ -699,7 +699,7 @@ class _LandingPageState extends State<LandingPage>
       child: Column(
         children: [
           Text(
-            'Why Choose Mvit Forms?',
+            'Why Choose Formbuilder?',
             style: GoogleFonts.poppins(
               fontSize: isSmallScreen ? 28 : 36,
               fontWeight: FontWeight.bold,

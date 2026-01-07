@@ -124,7 +124,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
                         const SizedBox(height: 30),
                         
                         Text(
-                          'Mvit Forms',
+                          'Formbuilder',
                           style: GoogleFonts.poppins(
                             fontSize: 32,
                             fontWeight: FontWeight.bold,
@@ -199,7 +199,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Text(
-                                  'New to Mvit Forms? Start as a Student to explore!',
+                                  'New to Formbuilder? Start as a Student to explore!',
                                   style: GoogleFonts.inter(
                                     fontSize: 13,
                                     color: isDark ? Colors.grey[300] : Colors.grey[600],
