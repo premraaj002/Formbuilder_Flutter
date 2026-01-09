@@ -160,7 +160,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Formbuilder',
       debugShowCheckedModeBanner: false,
-      themeMode: themeNotifier.themeMode,
+      themeMode: ThemeMode.light, // Forced Light Mode
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       navigatorKey: navigatorKey,
