@@ -1,19 +1,33 @@
-# adminapp
+# 🧩 FormBuilder
 
-A new Flutter project.
+🔗 **Live Project:** https://premsformbuilder.web.app  
 
-## Getting Started
+ FormBuilder is a dynamic web application that allows users to create and customize forms easily without writing any code. The application focuses on simplicity, usability, and fast deployment using Firebase.
 
-This project is a starting point for a Flutter application.
+---
 
-A few resources to get you started if this is your first Flutter project:
+## 🚀 Features
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+- Dynamic form creation
+- Add and remove form fields easily
+- Clean and responsive user interface
+- Real-time form preview
+- Hosted on Firebase
+- Protected Test with Restrict Tab switching
+- Dynamic Quiz creation and Time Allotment
+- Mobile-friendly design
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+---
 
+## 🛠️ Tech Stack
 
-This product is Licensed under MIT Lincense
+### Frontend
+- Flutter
+
+### Cloud & Deployment
+- Firebase
+- Firebase Hosting  
+
+---
+
+# This product is licensed under the MIT License.
