@@ -171,12 +171,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
         // Sort manually in client
         final sortedDocs = querySnapshot.docs;
         sortedDocs.sort((a, b) {
-          final aTime = a.data()['updatedAt'] as Timestamp?;
-          final bTime = b.data()['updatedAt'] as Timestamp?;
-          if (aTime == null && bTime == null) return 0;
-          if (aTime == null) return 1;
-          if (bTime == null) return -1;
-          return bTime.compareTo(aTime); // Descending order
+          // Handle both Timestamp and String types
+          dynamic aTime = a.data()['updatedAt'];
+          dynamic bTime = b.data()['updatedAt'];
+          
+          // Convert to Timestamp if needed
+          Timestamp? aTimestamp;
+          Timestamp? bTimestamp;
+          
+          if (aTime is Timestamp) {
+            aTimestamp = aTime;
+          } else if (aTime is String) {
+            try {
+              aTimestamp = Timestamp.fromDate(DateTime.parse(aTime));
+            } catch (e) {
+              // Invalid date string, treat as null
+              aTimestamp = null;
+            }
+          }
+          
+          if (bTime is Timestamp) {
+            bTimestamp = bTime;
+          } else if (bTime is String) {
+            try {
+              bTimestamp = Timestamp.fromDate(DateTime.parse(bTime));
+            } catch (e) {
+              // Invalid date string, treat as null
+              bTimestamp = null;
+            }
+          }
+          
+          if (aTimestamp == null && bTimestamp == null) return 0;
+          if (aTimestamp == null) return 1;
+          if (bTimestamp == null) return -1;
+          return bTimestamp.compareTo(aTimestamp); // Descending order
         });
 
         if (!mounted) return;
@@ -2482,22 +2510,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             builder: (context) => AlertDialog(
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                               title: Text('Share "${quizData['title'] ?? 'Untitled Quiz'}"'),
-                              content: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  QrImageView(data: link, size: 180),
-                                  SizedBox(height: 12),
-                                  SelectableText(link, style: TextStyle(fontSize: 12)),
-                                  SizedBox(height: 8),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(isPublished ? Icons.check_circle : Icons.info_outline, color: isPublished ? Colors.green : Colors.orange, size: 18),
-                                      SizedBox(width: 6),
-                                      Text(isPublished ? 'Published' : 'Draft', style: TextStyle(fontWeight: FontWeight.w500, color: isPublished ? Colors.green : Colors.orange)),
-                                    ],
-                                  ),
-                                ],
+                              content: SizedBox(
+                                width: 300,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    QrImageView(data: link, size: 180),
+                                    SizedBox(height: 12),
+                                    SelectableText(link, style: TextStyle(fontSize: 12)),
+                                    SizedBox(height: 8),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(isPublished ? Icons.check_circle : Icons.info_outline, color: isPublished ? Colors.green : Colors.orange, size: 18),
+                                        SizedBox(width: 6),
+                                        Text(isPublished ? 'Published' : 'Draft', style: TextStyle(fontWeight: FontWeight.w500, color: isPublished ? Colors.green : Colors.orange)),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
                               actions: [
                                 TextButton(onPressed: () => Navigator.pop(context), child: Text('Close')),

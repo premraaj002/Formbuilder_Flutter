@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:universal_html/html.dart' as html;
 import '../widgets/public_quiz_question_widget.dart';
 import '../services/auth_service.dart';
@@ -22,6 +23,18 @@ class _PublicQuizScreenState extends State<PublicQuizScreen> {
   bool isSubmitting = false;
   User? currentUser;
   StreamSubscription<User?>? _authSubscription;
+  
+  // Timer variables
+  Timer? _quizTimer;
+  int _remainingSeconds = 0;
+  bool _enableTimer = false;
+  int? _timeLimitMinutes;
+  
+  // Tab switch restriction variables
+  int _tabSwitchCount = 0;
+  bool _enableTabRestriction = false;
+  int? _maxTabSwitches;
+  StreamSubscription? _visibilitySubscription;
 
   @override
   void initState() {
@@ -54,10 +67,28 @@ class _PublicQuizScreenState extends State<PublicQuizScreen> {
         // Check if the quiz is published, default to true for backward compatibility
         final isPublished = data?['isPublished'] ?? true;
         
+        // Extract timer and tab restriction settings
+        final settings = data?['settings'] as Map<String, dynamic>? ?? {};
+        _enableTimer = settings['enableTimer'] ?? false;
+        _timeLimitMinutes = settings['timeLimitMinutes'];
+        _enableTabRestriction = settings['enableTabRestriction'] ?? false;
+        _maxTabSwitches = settings['maxTabSwitches'];
+        
         setState(() {
           quizData = data;
           isLoading = false;
         });
+        
+        // Initialize timer if enabled
+        if (_enableTimer && _timeLimitMinutes != null && _timeLimitMinutes! > 0) {
+          _remainingSeconds = _timeLimitMinutes! * 60;
+          _startQuizTimer();
+        }
+        
+        // Initialize tab switch detection if enabled (Web only)
+        if (_enableTabRestriction && _maxTabSwitches != null) {
+          _initializeTabSwitchDetection();
+        }
       } else {
         setState(() {
           isLoading = false;
@@ -88,6 +119,9 @@ class _PublicQuizScreenState extends State<PublicQuizScreen> {
   Future<void> _submitQuiz() async {
     // Force refresh auth state before submission
     await _refreshAuthState();
+    
+    // Cancel timer if active
+    _quizTimer?.cancel();
     
     // Check if user is logged in
     print('Quiz Submit clicked. Current user: ${currentUser?.email ?? 'null'}');
@@ -447,10 +481,199 @@ class _PublicQuizScreenState extends State<PublicQuizScreen> {
       });
     }
   }
+  
+  // Timer Management Methods
+  void _startQuizTimer() {
+    _quizTimer = Timer.periodic(Duration(seconds: 1), (timer) {
+      if (_remainingSeconds > 0) {
+        setState(() {
+          _remainingSeconds--;
+        });
+      } else {
+        timer.cancel();
+        _autoSubmitQuiz(reason: 'Time expired');
+      }
+    });
+  }
+  
+  String _formatTime(int seconds) {
+    final minutes = seconds ~/ 60;
+    final secs = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+  }
+  
+  // Tab Switch Detection Methods
+  void _initializeTabSwitchDetection() {
+    // Only works on Flutter Web
+    if (kIsWeb) {
+      _visibilitySubscription = html.document.onVisibilityChange.listen((event) {
+        if (html.document.hidden ?? false) {
+          _handleTabSwitch();
+        }
+      });
+    }
+  }
+  
+  void _handleTabSwitch() {
+    if (!_enableTabRestriction || _maxTabSwitches == null) return;
+    
+    setState(() {
+      _tabSwitchCount++;
+    });
+    
+    // Show warning dialog
+    if (_tabSwitchCount <= _maxTabSwitches!) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange[600], size: 28),
+              SizedBox(width: 12),
+              Text('Tab Switch Detected'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'You have switched tabs or minimized the window.',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+              ),
+              SizedBox(height: 12),
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.orange[700], size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Violation $_tabSwitchCount of $_maxTabSwitches',
+                        style: TextStyle(
+                          color: Colors.orange[900],
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (_tabSwitchCount >= _maxTabSwitches!)
+                Padding(
+                  padding: EdgeInsets.only(top: 12),
+                  child: Text(
+                    'This is your final warning. Further violations will auto-submit the quiz.',
+                    style: TextStyle(
+                      color: Colors.red[700],
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange[600],
+                foregroundColor: Colors.white,
+              ),
+              child: Text('I Understand'),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    // Auto-submit if exceeded
+    if (_tabSwitchCount > _maxTabSwitches!) {
+      _autoSubmitQuiz(reason: 'Exceeded allowed tab switches ($_maxTabSwitches)');
+    }
+  }
+  
+  Future<void> _autoSubmitQuiz({required String reason}) async {
+    // Cancel timer
+    _quizTimer?.cancel();
+    
+    // Show reason dialog
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.error_outline, color: Colors.red[600], size: 28),
+              SizedBox(width: 12),
+              Text('Quiz Auto-Submitted'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Your quiz has been automatically submitted.',
+                style: TextStyle(fontSize: 16),
+              ),
+              SizedBox(height: 16),
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.red[700]),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Reason: $reason',
+                        style: TextStyle(
+                          color: Colors.red[900],
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _submitQuiz();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purple[600],
+                foregroundColor: Colors.white,
+              ),
+              child: Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
 
   @override
   void dispose() {
     _authSubscription?.cancel();
+    _quizTimer?.cancel();
+    _visibilitySubscription?.cancel();
     super.dispose();
   }
 
@@ -658,6 +881,129 @@ class _PublicQuizScreenState extends State<PublicQuizScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Timer Display
+            if (_enableTimer && _remainingSeconds > 0)
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(16),
+                margin: EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: _remainingSeconds < 60 
+                    ? Colors.red[50] 
+                    : _remainingSeconds < 300 
+                      ? Colors.orange[50] 
+                      : Colors.blue[50],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _remainingSeconds < 60 
+                      ? Colors.red[300]! 
+                      : _remainingSeconds < 300 
+                        ? Colors.orange[300]! 
+                        : Colors.blue[300]!,
+                    width: 2,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.timer,
+                      color: _remainingSeconds < 60 
+                        ? Colors.red[700] 
+                        : _remainingSeconds < 300 
+                          ? Colors.orange[700] 
+                          : Colors.blue[700],
+                      size: 28,
+                    ),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Time Remaining',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[700],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            _formatTime(_remainingSeconds),
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: _remainingSeconds < 60 
+                                ? Colors.red[900] 
+                                : _remainingSeconds < 300 
+                                  ? Colors.orange[900] 
+                                  : Colors.blue[900],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_remainingSeconds < 60)
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        color: Colors.red[700],
+                        size: 28,
+                      ),
+                  ],
+                ),
+              ),
+            
+            // Tab Switch Counter
+            if (_enableTabRestriction && _maxTabSwitches != null)
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(12),
+                margin: EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: _tabSwitchCount >= (_maxTabSwitches! * 0.8) 
+                    ? Colors.red[50] 
+                    : _tabSwitchCount >= (_maxTabSwitches! * 0.5) 
+                      ? Colors.orange[50] 
+                      : Colors.green[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: _tabSwitchCount >= (_maxTabSwitches! * 0.8) 
+                      ? Colors.red[300]! 
+                      : _tabSwitchCount >= (_maxTabSwitches! * 0.5) 
+                        ? Colors.orange[300]! 
+                        : Colors.green[300]!,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.tab_outlined,
+                      color: _tabSwitchCount >= (_maxTabSwitches! * 0.8) 
+                        ? Colors.red[700] 
+                        : _tabSwitchCount >= (_maxTabSwitches! * 0.5) 
+                          ? Colors.orange[700] 
+                          : Colors.green[700],
+                      size: 20,
+                    ),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Tab Switches: $_tabSwitchCount / $_maxTabSwitches',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: _tabSwitchCount >= (_maxTabSwitches! * 0.8) 
+                            ? Colors.red[900] 
+                            : _tabSwitchCount >= (_maxTabSwitches! * 0.5) 
+                              ? Colors.orange[900] 
+                              : Colors.green[900],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            
             // Quiz description
             if (quizData!['description'] != null && quizData!['description'].isNotEmpty)
               Container(

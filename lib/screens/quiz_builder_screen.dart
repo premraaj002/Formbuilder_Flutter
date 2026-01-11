@@ -51,6 +51,14 @@ class _QuizBuilderScreenState extends State<QuizBuilderScreen> {
   bool _shuffleQuestions = false;
   int _timeLimit = 0;
   bool _allowRetake = true;
+  
+  // Timer settings
+  bool _enableTimer = false;
+  int _timeLimitMinutes = 20;
+  
+  // Tab switch restriction settings
+  bool _enableTabRestriction = false;
+  int _maxTabSwitches = 5;
 
   @override
   void initState() {
@@ -91,6 +99,10 @@ class _QuizBuilderScreenState extends State<QuizBuilderScreen> {
       _shuffleQuestions = templateSettings['shuffleQuestions'] ?? false;
       _timeLimit = templateSettings['timeLimit'] ?? 0;
       _allowRetake = templateSettings['allowRetake'] ?? true;
+      _enableTimer = templateSettings['enableTimer'] ?? false;
+      _timeLimitMinutes = templateSettings['timeLimitMinutes'] ?? 20;
+      _enableTabRestriction = templateSettings['enableTabRestriction'] ?? false;
+      _maxTabSwitches = templateSettings['maxTabSwitches'] ?? 5;
       
       setState(() {});
     } else {
@@ -116,6 +128,10 @@ class _QuizBuilderScreenState extends State<QuizBuilderScreen> {
         _shuffleQuestions = settings['shuffleQuestions'] ?? false;
         _timeLimit = settings['timeLimit'] ?? 0;
         _allowRetake = settings['allowRetake'] ?? true;
+        _enableTimer = settings['enableTimer'] ?? false;
+        _timeLimitMinutes = settings['timeLimitMinutes'] ?? 20;
+        _enableTabRestriction = settings['enableTabRestriction'] ?? false;
+        _maxTabSwitches = settings['maxTabSwitches'] ?? 5;
         _isPublished = (doc.data()!['isPublished'] ?? false) as bool;
         setState(() {});
       }
@@ -288,6 +304,10 @@ class _QuizBuilderScreenState extends State<QuizBuilderScreen> {
           'timeLimit': _timeLimit,
           'allowRetake': _allowRetake,
           'totalPoints': totalPoints,
+          'enableTimer': _enableTimer,
+          'timeLimitMinutes': _timeLimitMinutes,
+          'enableTabRestriction': _enableTabRestriction,
+          'maxTabSwitches': _maxTabSwitches,
         },
         createdBy: user.uid,
         createdAt: widget.quizId == null ? now : DateTime.now(),
@@ -1098,10 +1118,89 @@ class _QuizBuilderScreenState extends State<QuizBuilderScreen> {
                 _buildSettingsItem(context, icon: Icons.emoji_events_outlined, title: 'Show score at end', subtitle: 'Display final score to students', value: _showScoreAtEnd, onChanged: (v){setState(()=>_showScoreAtEnd=v);} ),
                 _buildSettingsItem(context, icon: Icons.shuffle, title: 'Shuffle questions', subtitle: 'Randomize question order', value: _shuffleQuestions, onChanged: (v){setState(()=>_shuffleQuestions=v);} ),
                 _buildSettingsItem(context, icon: Icons.autorenew, title: 'Allow retake', subtitle: 'Students can retake the quiz', value: _allowRetake, onChanged: (v){setState(()=>_allowRetake=v);} ),
+                
+                // Timer Settings Section
+                Container(
+                  margin: EdgeInsets.symmetric(vertical: 16),
+                  child: Divider(color: colorScheme.outline.withOpacity(0.2)),
+                ),
+                _buildSettingsItem(
+                  context, 
+                  icon: Icons.timer_outlined, 
+                  title: 'Enable Timer', 
+                  subtitle: 'Set a time limit for this quiz', 
+                  value: _enableTimer, 
+                  onChanged: (v){setState(()=>_enableTimer=v);}
+                ),
+                if (_enableTimer)
+                  Container(
+                    margin: EdgeInsets.only(left: 56, right: 16, bottom: 16),
+                    child: TextField(
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: 'Quiz Duration (minutes)',
+                        hintText: 'e.g., 20',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        prefixIcon: Icon(Icons.schedule, color: Color(0xFF34A853)),
+                      ),
+                      controller: TextEditingController(text: _timeLimitMinutes.toString())
+                        ..selection = TextSelection.fromPosition(
+                          TextPosition(offset: _timeLimitMinutes.toString().length),
+                        ),
+                      onChanged: (value) {
+                        final minutes = int.tryParse(value);
+                        if (minutes != null && minutes > 0) {
+                          setState(() => _timeLimitMinutes = minutes);
+                        }
+                      },
+                    ),
+                  ),
+                
+                // Tab Switch Restriction Section
+                Container(
+                  margin: EdgeInsets.symmetric(vertical: 16),
+                  child: Divider(color: colorScheme.outline.withOpacity(0.2)),
+                ),
+                _buildSettingsItem(
+                  context, 
+                  icon: Icons.tab_outlined, 
+                  title: 'Enable Tab Switch Restriction', 
+                  subtitle: 'Limit tab switching during quiz (Web only)', 
+                  value: _enableTabRestriction, 
+                  onChanged: (v){setState(()=>_enableTabRestriction=v);}
+                ),
+                if (_enableTabRestriction)
+                  Container(
+                    margin: EdgeInsets.only(left: 56, right: 16, bottom: 16),
+                    child: TextField(
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: 'Maximum Allowed Tab Switches',
+                        hintText: 'e.g., 5',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        prefixIcon: Icon(Icons.warning_amber_outlined, color: Colors.orange),
+                      ),
+                      controller: TextEditingController(text: _maxTabSwitches.toString())
+                        ..selection = TextSelection.fromPosition(
+                          TextPosition(offset: _maxTabSwitches.toString().length),
+                        ),
+                      onChanged: (value) {
+                        final count = int.tryParse(value);
+                        if (count != null && count > 0) {
+                          setState(() => _maxTabSwitches = count);
+                        }
+                      },
+                    ),
+                  ),
+                
                 ListTile(
                   contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   leading: Container(padding: EdgeInsets.all(8), decoration: BoxDecoration(color: Color(0xFF34A853).withOpacity(0.2), borderRadius: BorderRadius.circular(8)), child: Icon(Icons.schedule, color: Color(0xFF34A853), size: 20)),
-                  title: Text('Time limit', style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500)),
+                  title: Text('Legacy Time limit', style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500)),
                   subtitle: Text(_timeLimit == 0 ? 'No time limit' : '$_timeLimit minutes', style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurface.withOpacity(0.6))),
                   trailing: IconButton(icon: Icon(Icons.edit), onPressed: () => _showTimeLimitDialog()),
                 ),
