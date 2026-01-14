@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'quiz_settings_model.dart';
 
 class FormQuestion {
   final String id;
@@ -118,7 +119,7 @@ class FormData {
   final String title;
   final String? description;
   final List<FormQuestion> questions;
-  final Map<String, dynamic> settings;
+  final QuizSettingsModel? quizSettings; // Replaced Map<String, dynamic> settings
   final String createdBy;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -132,7 +133,7 @@ class FormData {
     required this.title,
     this.description,
     required this.questions,
-    required this.settings,
+    this.quizSettings, // Use QuizSettingsModel instead of Map
     required this.createdBy,
     required this.createdAt,
     required this.updatedAt,
@@ -148,7 +149,7 @@ class FormData {
       'title': title,
       'description': description,
       'questions': questions.map((q) => q.toJson()).toList(),
-      'settings': settings,
+      'quizSettings': quizSettings?.toJson(), // Serialize QuizSettingsModel
       'createdBy': createdBy,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
@@ -160,6 +161,26 @@ class FormData {
   }
 
   factory FormData.fromJson(Map<String, dynamic> json) {
+    // Handle migration from old Map-based settings to QuizSettingsModel
+    QuizSettingsModel? parseQuizSettings() {
+      // If not a quiz, no settings needed
+      if (json['isQuiz'] != true) return null;
+      
+      // Try to parse from new format (quizSettings object)
+      if (json['quizSettings'] != null && json['quizSettings'] is Map<String, dynamic>) {
+        return QuizSettingsModel.fromJson(json['quizSettings']);
+      }
+      
+      // Fallback: migrate from old format (settings Map)
+      if (json['settings'] != null && json['settings'] is Map<String, dynamic>) {
+        final oldSettings = json['settings'] as Map<String, dynamic>;
+        return QuizSettingsModel.fromJson(oldSettings);
+      }
+      
+      // No settings found, return defaults for quizzes
+      return QuizSettingsModel.defaults();
+    }
+    
     return FormData(
       id: json['id'],
       title: json['title'],
@@ -167,7 +188,7 @@ class FormData {
       questions: (json['questions'] as List?)
           ?.map((q) => FormQuestion.fromJson(q))
           .toList() ?? [],
-      settings: json['settings'] ?? {},
+      quizSettings: parseQuizSettings(), // Parse quiz settings with migration
       createdBy: json['createdBy'] ?? '',
       createdAt: _parseDateTime(json['createdAt']),
       updatedAt: _parseDateTime(json['updatedAt']),

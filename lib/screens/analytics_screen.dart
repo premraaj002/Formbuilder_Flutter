@@ -32,7 +32,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Load all non-deleted forms for user
+      // Load all non-deleted forms/quizzes for user
       final formsSnap = await FirebaseFirestore.instance
           .collection('forms')
           .where('createdBy', isEqualTo: user.uid)
@@ -43,20 +43,42 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       
       for (final form in formsSnap.docs) {
         final formData = form.data();
-        final title = (formData['title'] ?? 'Untitled Form').toString();
+        final title = (formData['title'] ?? 'Untitled').toString();
         final List questions = (formData['questions'] as List?) ?? [];
+        final bool isQuiz = formData['isQuiz'] == true;
 
-        // Count responses to this form (exclude drafts)
+        // Fetch from the correct collection
+        final String collectionName = isQuiz ? 'quiz_responses' : 'responses';
+        final String formIdField = isQuiz ? 'quizId' : 'formId';
+        final String ownerIdField = isQuiz ? 'quizOwnerId' : 'formOwnerId';
+
         final responsesSnap = await FirebaseFirestore.instance
-            .collection('responses')
-            .where('formId', isEqualTo: form.id)
-            .where('formOwnerId', isEqualTo: user.uid)
+            .collection(collectionName)
+            .where(formIdField, isEqualTo: form.id)
+            .where(ownerIdField, isEqualTo: user.uid)
             .where('isDraft', isEqualTo: false)
             .get();
 
         final int responseCount = responsesSnap.size;
         final Map<String, double> numericAverages = {};
         final List<QuestionAnalytics> questionAnalytics = [];
+        
+        // Quiz scoring variables
+        double totalScoreSum = 0;
+        double? highestScore;
+        double? lowestScore;
+
+        // Process quiz scores
+        if (isQuiz && responsesSnap.docs.isNotEmpty) {
+          for (final r in responsesSnap.docs) {
+            final rData = r.data();
+            final score = (rData['score'] as num?)?.toDouble() ?? 0.0;
+            totalScoreSum += score;
+            
+            if (highestScore == null || score > highestScore) highestScore = score;
+            if (lowestScore == null || score < lowestScore) lowestScore = score;
+          }
+        }
 
         if (questions.isNotEmpty && responsesSnap.docs.isNotEmpty) {
           for (final q in questions) {
@@ -95,7 +117,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 final average = sum / count;
                 numericAverages[qTitle.isNotEmpty ? qTitle : qId] = average;
 
-                // Add question analytics for rating questions
                 if (qType == 'rating') {
                   questionAnalytics.add(QuestionAnalytics(
                     questionId: qId,
@@ -117,6 +138,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           responseCount: responseCount,
           numericAverages: numericAverages,
           questionAnalytics: questionAnalytics,
+          isQuiz: isQuiz,
+          averageScore: responseCount > 0 ? totalScoreSum / responseCount : null,
+          highestScore: highestScore,
+          lowestScore: lowestScore,
         ));
       }
 
@@ -299,14 +324,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   }
 
   Widget _buildAnalyticsList() {
-    final formsWithRatingQuestions = _formAnalytics
-        .where((form) => form.questionAnalytics.isNotEmpty)
-        .toList();
-
-    if (formsWithRatingQuestions.isEmpty) {
-      return _buildNoRatingQuestionsState();
-    }
-
     return CustomScrollView(
       slivers: [
         // Summary header
@@ -322,8 +339,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             desktop: const EdgeInsets.all(24),
           ),
           sliver: MediaQuery.of(context).size.width > 768
-              ? _buildDesktopLayout(formsWithRatingQuestions)
-              : _buildMobileLayout(formsWithRatingQuestions),
+              ? _buildDesktopLayout(_formAnalytics)
+              : _buildMobileLayout(_formAnalytics),
         ),
 
         // Bottom spacing
@@ -345,7 +362,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         .length;
     final totalResponses = _formAnalytics
         .map((f) => f.responseCount)
-        .fold(0, (sum, count) => sum + count);
+        .fold<int>(0, (sum, count) => sum + count.toInt());
 
     return Container(
       margin: Responsive.paddingWhen(
@@ -524,7 +541,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     Text(
-                      '${form.responseCount} responses • ${form.questionAnalytics.length} rating questions',
+                      form.isQuiz 
+                        ? '${form.responseCount} responses • Quiz'
+                        : '${form.responseCount} responses • ${form.questionAnalytics.length} rating questions',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: colorScheme.onSurface.withOpacity(0.6),
                       ),
@@ -583,53 +602,73 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             ),
             child: Column(
               children: [
-                // Average rating display
-                Row(
-                  children: [
-                    Icon(
-                      Icons.star_rounded,
-                      color: Colors.orange[600],
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Average Rating',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w500,
-                        color: colorScheme.onSurface,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      _getFormAverageRating(form),
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
+                if (form.isQuiz) ...[
+                  Row(
+                    children: [
+                      Icon(Icons.analytics_outlined, color: Colors.blue[600], size: 20),
+                      const SizedBox(width: 8),
+                      Text('Avg Score', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
+                      const Spacer(),
+                      Text('${form.averageScore?.toStringAsFixed(1) ?? '0'}%', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.blue[600])),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildStatItem(context, 'Highest', '${form.highestScore?.toStringAsFixed(0) ?? '0'}%', Icons.trending_up),
+                      _buildStatItem(context, 'Lowest', '${form.lowestScore?.toStringAsFixed(0) ?? '0'}%', Icons.trending_down),
+                    ],
+                  ),
+                ] else ...[
+                  // Average rating display for forms
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.star_rounded,
                         color: Colors.orange[600],
+                        size: 20,
                       ),
-                    ),
-                  ],
-                ),
-                
-                const SizedBox(height: 12),
-                
-                // Response count and questions summary
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildStatItem(
-                      context,
-                      'Questions',
-                      form.questionAnalytics.length.toString(),
-                      Icons.quiz_outlined,
-                    ),
-                    _buildStatItem(
-                      context,
-                      'Total Responses',
-                      form.responseCount.toString(),
-                      Icons.people_outlined,
-                    ),
-                  ],
-                ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Average Rating',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w500,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        _getFormAverageRating(form),
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orange[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 12),
+                  
+                  // Response count and questions summary
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildStatItem(
+                        context,
+                        'Questions',
+                        form.questionAnalytics.length.toString(),
+                        Icons.quiz_outlined,
+                      ),
+                      _buildStatItem(
+                        context,
+                        'Responses',
+                        form.responseCount.toString(),
+                        Icons.people_outlined,
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),

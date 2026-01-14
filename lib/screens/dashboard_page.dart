@@ -22,6 +22,7 @@ import '../models/template_models.dart';
 import 'template_selection_screen.dart';
 import 'package:provider/provider.dart';
 import '../providers/settings_notifier.dart';
+import '../models/analytics_models.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -30,13 +31,7 @@ class DashboardScreen extends StatefulWidget {
   _DashboardScreenState createState() => _DashboardScreenState();
 }
 
-class FormAnalytics {
-  FormAnalytics({required this.formId, required this.title, required this.responseCount, required this.numericAverages});
-  final String formId;
-  final String title;
-  final int responseCount;
-  final Map<String, double> numericAverages; // key: question title, value: average
-}
+// Moved FormAnalytics to ../models/analytics_models.dart
 
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
@@ -314,6 +309,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           title: title,
           responseCount: responseCount,
           numericAverages: numericAverages,
+          questionAnalytics: [],
         ));
       }
 
@@ -1388,7 +1384,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => formData['isQuiz'] == true
-                      ? QuizBuilderScreen(quizId: form.id)
+                      ? QuizBuilderScreen.withProvider(quizId: form.id)
                       : FormBuilderScreen(formId: form.id),
                 ),
               ).then((_) => _loadUserForms());
@@ -1480,7 +1476,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             if (formData['isQuiz'] == true) ...[
                               SizedBox(width: 12),
                               Text(
-                                '${formData['settings']?['totalPoints'] ?? 0} pts',
+                                // Calculate total points from questions if not explicitly in settings
+                                '${(formData['questions'] as List?)?.fold<int>(0, (sum, q) => sum + ((q as Map)['points'] ?? 1) as int) ?? 0} pts',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Color(0xFF34A853),
@@ -1564,7 +1561,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           Navigator.of(context).push(
                             MaterialPageRoute(
                               builder: (_) => formData['isQuiz'] == true
-                                  ? QuizBuilderScreen(quizId: form.id)
+                                  ? QuizBuilderScreen.withProvider(quizId: form.id)
                                   : FormBuilderScreen(formId: form.id),
                             ),
                           ).then((_) => _loadUserForms());
@@ -1651,7 +1648,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Colors.purple,
               () => Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => QuizBuilderScreen(),
+                  builder: (_) => QuizBuilderScreen.withProvider(),
                 ),
               ).then((_) => _loadUserQuizzes()),
             ),
@@ -1808,7 +1805,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => template!.questions.any((q) => q.isQuizQuestion)
-                    ? QuizBuilderScreen(template: template)
+                    ? QuizBuilderScreen.withProvider(template: template)
                     : FormBuilderScreen(template: template),
               ),
             ).then((_) {
@@ -2389,7 +2386,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => QuizBuilderScreen(quizId: quiz.id),
+                  builder: (_) => QuizBuilderScreen.withProvider(quizId: quiz.id),
                 ),
               ).then((_) => _loadUserQuizzes());
             },
@@ -2458,7 +2455,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                       SizedBox(width: 12),
                       Text(
-                        '${quizData['settings']?['totalPoints'] ?? 0} pts',
+                        // Calculate total points from questions if not explicitly in settings
+                        '${(quizData['questions'] as List?)?.fold<int>(0, (sum, q) => sum + ((q as Map)['points'] ?? 1) as int) ?? 0} pts',
                         style: TextStyle(
                           fontSize: 12,
                           color: Color(0xFF34A853),
@@ -2577,7 +2575,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           if (value == 'edit') {
                             Navigator.of(context).push(
                               MaterialPageRoute(
-                                builder: (_) => QuizBuilderScreen(quizId: quiz.id),
+                                builder: (_) => QuizBuilderScreen.withProvider(quizId: quiz.id),
                               ),
                             ).then((_) => _loadUserQuizzes());
                           } else if (value == 'share') {
@@ -2691,7 +2689,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => formData['isQuiz'] == true
-                      ? QuizBuilderScreen(quizId: form.id)
+                      ? QuizBuilderScreen.withProvider(quizId: form.id)
                       : FormBuilderScreen(formId: form.id),
                 ),
               ).then((_) => _loadStarredForms());
@@ -2869,7 +2867,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => formData['isQuiz'] == true
-                                      ? QuizBuilderScreen(quizId: form.id)
+                                      ? QuizBuilderScreen.withProvider(quizId: form.id)
                                       : FormBuilderScreen(formId: form.id),
                                 ),
                               ).then((_) => _loadStarredForms());

@@ -231,13 +231,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         title: _formTitleController.text.trim(),
         description: _formDescriptionController.text.trim(),
         questions: _questions,
-        settings: {
-          'allowMultipleResponses': true,
-          'collectEmail': false,
-          'showProgressBar': true,
-        },
+        quizSettings: null, // Forms (not quizzes) don't have quiz settings
         createdBy: user.uid,
-        createdAt: widget.formId == null ? now : DateTime.now(), // Keep original if editing
+        createdAt: widget.formId == null ? now : DateTime.now(),
         updatedAt: now,
         isPublished: publish,
       );

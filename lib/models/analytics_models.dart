@@ -4,6 +4,10 @@ class FormAnalytics {
   final int responseCount;
   final Map<String, double> numericAverages;
   final List<QuestionAnalytics> questionAnalytics;
+  final bool isQuiz;
+  final double? averageScore;
+  final double? highestScore;
+  final double? lowestScore;
 
   FormAnalytics({
     required this.formId,
@@ -11,6 +15,10 @@ class FormAnalytics {
     required this.responseCount,
     required this.numericAverages,
     required this.questionAnalytics,
+    this.isQuiz = false,
+    this.averageScore,
+    this.highestScore,
+    this.lowestScore,
   });
 }
 

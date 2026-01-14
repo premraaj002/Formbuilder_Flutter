@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:universal_html/html.dart' as html;
 import '../widgets/public_quiz_question_widget.dart';
 import '../services/auth_service.dart';
+import '../models/form_models.dart';
+import '../models/quiz_settings_model.dart';
 import 'form_success_screen.dart';
 
 class PublicQuizScreen extends StatefulWidget {
@@ -17,24 +19,28 @@ class PublicQuizScreen extends StatefulWidget {
 }
 
 class _PublicQuizScreenState extends State<PublicQuizScreen> {
-  Map<String, dynamic>? quizData;
+  // Quiz state
+  FormData? quizDetails;
   Map<String, dynamic> answers = {};
   bool isLoading = true;
   bool isSubmitting = false;
   User? currentUser;
   StreamSubscription<User?>? _authSubscription;
   
+  // Settings shortcut (will be populated from quizDetails.quizSettings)
+  QuizSettingsModel? _settings;
+  
   // Timer variables
   Timer? _quizTimer;
   int _remainingSeconds = 0;
-  bool _enableTimer = false;
-  int? _timeLimitMinutes;
   
   // Tab switch restriction variables
   int _tabSwitchCount = 0;
-  bool _enableTabRestriction = false;
-  int? _maxTabSwitches;
   StreamSubscription? _visibilitySubscription;
+  
+  // Shuffled data
+  List<FormQuestion> _displayQuestions = [];
+  Map<String, List<String>> _shuffledOptions = {};
 
   @override
   void initState() {
@@ -63,30 +69,43 @@ class _PublicQuizScreenState extends State<PublicQuizScreen> {
           .get();
       
       if (doc.exists) {
-        final data = doc.data();
-        // Check if the quiz is published, default to true for backward compatibility
-        final isPublished = data?['isPublished'] ?? true;
+        final formData = FormData.fromJson(doc.data()!);
+        final settings = formData.quizSettings ?? QuizSettingsModel();
         
-        // Extract timer and tab restriction settings
-        final settings = data?['settings'] as Map<String, dynamic>? ?? {};
-        _enableTimer = settings['enableTimer'] ?? false;
-        _timeLimitMinutes = settings['timeLimitMinutes'];
-        _enableTabRestriction = settings['enableTabRestriction'] ?? false;
-        _maxTabSwitches = settings['maxTabSwitches'];
+        // Prepare questions (with shuffling if enabled)
+        List<FormQuestion> questions = List.from(formData.questions);
+        if (settings.shuffleQuestions) {
+          questions.shuffle();
+        }
+        
+        // Prepare options (with shuffling if enabled)
+        Map<String, List<String>> shuffledOptions = {};
+        for (var question in questions) {
+          if (question.options != null && question.options!.isNotEmpty) {
+            List<String> options = List.from(question.options!);
+            if (settings.shuffleOptions) {
+              options.shuffle();
+            }
+            shuffledOptions[question.id] = options;
+          }
+        }
         
         setState(() {
-          quizData = data;
+          quizDetails = formData;
+          _settings = settings;
+          _displayQuestions = questions;
+          _shuffledOptions = shuffledOptions;
           isLoading = false;
         });
         
         // Initialize timer if enabled
-        if (_enableTimer && _timeLimitMinutes != null && _timeLimitMinutes! > 0) {
-          _remainingSeconds = _timeLimitMinutes! * 60;
+        if (settings.timeLimitMinutes != null && settings.timeLimitMinutes! > 0) {
+          _remainingSeconds = settings.timeLimitMinutes! * 60;
           _startQuizTimer();
         }
         
         // Initialize tab switch detection if enabled (Web only)
-        if (_enableTabRestriction && _maxTabSwitches != null) {
+        if (settings.enableTabRestriction) {
           _initializeTabSwitchDetection();
         }
       } else {
@@ -139,22 +158,52 @@ class _PublicQuizScreenState extends State<PublicQuizScreen> {
       // Calculate score
       int correctAnswers = 0;
       int totalQuestions = 0;
+      double earnedPoints = 0;
+      double totalPoints = 0;
       
-      final questions = List<Map<String, dynamic>>.from(quizData!['questions'] ?? []);
-      for (var question in questions) {
-        final questionId = question['id'] ?? '';
-        final correctAnswer = question['correctAnswer'];
+      final settings = _settings ?? QuizSettingsModel();
+      
+      for (var question in quizDetails!.questions) {
+        final questionId = question.id;
         final userAnswer = answers[questionId];
-        
-        if (correctAnswer != null && userAnswer != null) {
-          totalQuestions++;
-          if (userAnswer.toString() == correctAnswer.toString()) {
-            correctAnswers++;
+        final points = (question.points ?? 1).toDouble();
+        totalPoints += points;
+        totalQuestions++;
+
+        bool isCorrect = false;
+        if (question.type == 'checkboxes') {
+          // Handle multiple answers
+          final userAnswers = (userAnswer as List?)?.map((e) => e.toString()).toList() ?? [];
+          final correctAnswersList = question.correctAnswers?.map((e) => e.toString()).toList() ?? [];
+          
+          if (userAnswers.length == correctAnswersList.length &&
+              userAnswers.every((element) => correctAnswersList.contains(element))) {
+            isCorrect = true;
+          }
+        } else {
+          // Handle single answer
+          if (userAnswer != null && question.correctAnswer != null &&
+              userAnswer.toString().trim().toLowerCase() == 
+              question.correctAnswer.toString().trim().toLowerCase()) {
+            isCorrect = true;
+          }
+        }
+
+        if (isCorrect) {
+          correctAnswers++;
+          earnedPoints += points;
+        } else if (userAnswer != null) {
+          // Apply negative marking if user answered incorrectly (not skipped)
+          if (settings.negativeMarking) {
+            earnedPoints -= settings.negativeMarkingPoints;
           }
         }
       }
       
-      final score = totalQuestions > 0 ? (correctAnswers / totalQuestions * 100).round() : 0;
+      // Ensure score isn't negative
+      if (earnedPoints < 0) earnedPoints = 0;
+      
+      final score = totalPoints > 0 ? (earnedPoints / totalPoints * 100).round() : 0;
 
       final responseData = {
         'quizId': widget.quizId,
@@ -162,11 +211,13 @@ class _PublicQuizScreenState extends State<PublicQuizScreen> {
         'userEmail': currentUser!.email,
         'answers': answers,
         'score': score,
+        'earnedPoints': earnedPoints,
+        'totalPoints': totalPoints,
         'correctAnswers': correctAnswers,
         'totalQuestions': totalQuestions,
         'submittedAt': Timestamp.now(),
-        'quizOwnerId': quizData?['createdBy'],
-        'quizTitle': quizData?['title'],
+        'quizOwnerId': quizDetails?.createdBy,
+        'quizTitle': quizDetails?.title,
       };
 
       await FirebaseFirestore.instance
@@ -178,7 +229,7 @@ class _PublicQuizScreenState extends State<PublicQuizScreen> {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (context) => FormSuccessScreen(
-              formTitle: quizData!['title'] ?? 'Untitled Quiz',
+              formTitle: quizDetails!.title,
               formId: widget.quizId,
               isQuiz: true,
               score: score,
@@ -515,14 +566,16 @@ class _PublicQuizScreenState extends State<PublicQuizScreen> {
   }
   
   void _handleTabSwitch() {
-    if (!_enableTabRestriction || _maxTabSwitches == null) return;
+    if (_settings == null || !_settings!.enableTabRestriction) return;
     
     setState(() {
       _tabSwitchCount++;
     });
     
+    final maxSwitches = _settings?.maxTabSwitchCount ?? 5;
+    
     // Show warning dialog
-    if (_tabSwitchCount <= _maxTabSwitches!) {
+    if (_tabSwitchCount <= maxSwitches) {
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -557,7 +610,7 @@ class _PublicQuizScreenState extends State<PublicQuizScreen> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Violation $_tabSwitchCount of $_maxTabSwitches',
+                        'Violation $_tabSwitchCount of $maxSwitches',
                         style: TextStyle(
                           color: Colors.orange[900],
                           fontWeight: FontWeight.w600,
@@ -567,7 +620,7 @@ class _PublicQuizScreenState extends State<PublicQuizScreen> {
                   ],
                 ),
               ),
-              if (_tabSwitchCount >= _maxTabSwitches!)
+              if (_tabSwitchCount >= maxSwitches)
                 Padding(
                   padding: EdgeInsets.only(top: 12),
                   child: Text(
@@ -595,8 +648,8 @@ class _PublicQuizScreenState extends State<PublicQuizScreen> {
     }
     
     // Auto-submit if exceeded
-    if (_tabSwitchCount > _maxTabSwitches!) {
-      _autoSubmitQuiz(reason: 'Exceeded allowed tab switches ($_maxTabSwitches)');
+    if (_tabSwitchCount > (_settings?.maxTabSwitchCount ?? 5)) {
+      _autoSubmitQuiz(reason: 'Exceeded allowed tab switches (${_settings?.maxTabSwitchCount ?? 5})');
     }
   }
   
@@ -677,10 +730,11 @@ class _PublicQuizScreenState extends State<PublicQuizScreen> {
     super.dispose();
   }
 
-  Widget _buildQuestionWidget(Map<String, dynamic> question, int index) {
-    final questionId = question['id'] ?? '';
-    final questionText = question['question'] ?? '';
-    final options = List<String>.from(question['options'] ?? []);
+  Widget _buildQuestionWidget(FormQuestion question, int index) {
+    final questionId = question.id;
+    final questionText = question.title;
+    // Use shuffled options if available, otherwise fallback to original
+    final options = _shuffledOptions[questionId] ?? question.options ?? [];
 
     return PublicQuizQuestionWidget(
       questionNumber: index + 1,
@@ -709,7 +763,7 @@ class _PublicQuizScreenState extends State<PublicQuizScreen> {
   }
   
   Widget _buildContent(BuildContext context) {
-    if (isLoading) {
+    if (isLoading || quizDetails == null) {
       return Scaffold(
         backgroundColor: Colors.white,
         appBar: AppBar(
@@ -753,359 +807,156 @@ class _PublicQuizScreenState extends State<PublicQuizScreen> {
         ),
       );
     }
+    
+    final theme = Theme.of(context);
+    final settings = _settings ?? QuizSettingsModel();
 
-    if (quizData == null) {
-      return Scaffold(
+    return PopScope(
+      canPop: settings.allowBackNavigation,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Back navigation is disabled for this quiz'))
+        );
+      },
+      child: Scaffold(
+        backgroundColor: Colors.grey[50],
         appBar: AppBar(
-          title: Text('Quiz Not Found'),
-          backgroundColor: Colors.red[600],
-          foregroundColor: Colors.white,
-        ),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.error_outline, size: 64, color: Colors.red),
-              SizedBox(height: 16),
-              Text('This quiz could not be found or is no longer available.'),
-              SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Go Back'),
+              Text(
+                quizDetails!.title,
+                style: TextStyle(
+                  color: Colors.grey[900],
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
               ),
+              if (settings.timeLimitMinutes != null)
+                Text(
+                  'Timer Active • ${_formatTime(_remainingSeconds)}',
+                  style: TextStyle(
+                    color: _remainingSeconds < 60 ? Colors.red : Colors.purple[600],
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
             ],
           ),
-        ),
-      );
-    }
-
-    final questions = List<Map<String, dynamic>>.from(quizData!['questions'] ?? []);
-    final isPublished = quizData!['isPublished'] ?? false;
-
-    if (!isPublished) {
-      return Scaffold(
-        appBar: AppBar(
-          title: Text('Quiz Unavailable'),
-          backgroundColor: Colors.orange[600],
-          foregroundColor: Colors.white,
-        ),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.lock_outline, size: 64, color: Colors.orange),
-              SizedBox(height: 16),
-              Text('This quiz is not published yet.'),
-              SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Go Back'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(quizData!['title'] ?? 'Untitled Quiz'),
-        backgroundColor: Colors.purple[600],
-        foregroundColor: Colors.white,
-        actions: [
-          if (currentUser == null)
-            Container(
-              margin: EdgeInsets.only(right: 8),
-              child: ElevatedButton.icon(
-                onPressed: () => _showLoginPrompt(),
-                icon: Icon(Icons.login, size: 18),
-                label: Text('Login'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.purple[600],
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
+          actions: [
+            if (currentUser != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 8.0),
+                child: Center(
+                  child: Text(
+                    currentUser!.email?.split('@')[0] ?? '',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 14,
+                    ),
                   ),
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 ),
               ),
-            )
-          else
-            // User info and logout
-            Container(
-              margin: EdgeInsets.only(right: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.account_circle, size: 18, color: Colors.white),
-                        SizedBox(width: 6),
-                        Text(
-                          currentUser?.email?.split('@')[0] ?? 'User',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w500,
-                            fontSize: 12,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(width: 8),
-                  IconButton(
-                    onPressed: () => _showLogoutDialog(),
-                    icon: Icon(Icons.logout, size: 20),
-                    tooltip: 'Logout',
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.white.withOpacity(0.2),
-                      padding: EdgeInsets.all(8),
-                    ),
-                  ),
-                ],
+            IconButton(
+              onPressed: currentUser != null ? _showLogoutDialog : _showLoginPrompt,
+              icon: Icon(
+                currentUser != null ? Icons.logout : Icons.login,
+                color: Colors.grey[700],
               ),
+              tooltip: currentUser != null ? 'Logout' : 'Login',
             ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Timer Display
-            if (_enableTimer && _remainingSeconds > 0)
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.all(16),
-                margin: EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: _remainingSeconds < 60 
-                    ? Colors.red[50] 
-                    : _remainingSeconds < 300 
-                      ? Colors.orange[50] 
-                      : Colors.blue[50],
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: _remainingSeconds < 60 
-                      ? Colors.red[300]! 
-                      : _remainingSeconds < 300 
-                        ? Colors.orange[300]! 
-                        : Colors.blue[300]!,
-                    width: 2,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.timer,
-                      color: _remainingSeconds < 60 
-                        ? Colors.red[700] 
-                        : _remainingSeconds < 300 
-                          ? Colors.orange[700] 
-                          : Colors.blue[700],
-                      size: 28,
-                    ),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Time Remaining',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[700],
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            _formatTime(_remainingSeconds),
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: _remainingSeconds < 60 
-                                ? Colors.red[900] 
-                                : _remainingSeconds < 300 
-                                  ? Colors.orange[900] 
-                                  : Colors.blue[900],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (_remainingSeconds < 60)
-                      Icon(
-                        Icons.warning_amber_rounded,
-                        color: Colors.red[700],
-                        size: 28,
-                      ),
-                  ],
-                ),
-              ),
-            
-            // Tab Switch Counter
-            if (_enableTabRestriction && _maxTabSwitches != null)
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.all(12),
-                margin: EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: _tabSwitchCount >= (_maxTabSwitches! * 0.8) 
-                    ? Colors.red[50] 
-                    : _tabSwitchCount >= (_maxTabSwitches! * 0.5) 
-                      ? Colors.orange[50] 
-                      : Colors.green[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: _tabSwitchCount >= (_maxTabSwitches! * 0.8) 
-                      ? Colors.red[300]! 
-                      : _tabSwitchCount >= (_maxTabSwitches! * 0.5) 
-                        ? Colors.orange[300]! 
-                        : Colors.green[300]!,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.tab_outlined,
-                      color: _tabSwitchCount >= (_maxTabSwitches! * 0.8) 
-                        ? Colors.red[700] 
-                        : _tabSwitchCount >= (_maxTabSwitches! * 0.5) 
-                          ? Colors.orange[700] 
-                          : Colors.green[700],
-                      size: 20,
-                    ),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Tab Switches: $_tabSwitchCount / $_maxTabSwitches',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: _tabSwitchCount >= (_maxTabSwitches! * 0.8) 
-                            ? Colors.red[900] 
-                            : _tabSwitchCount >= (_maxTabSwitches! * 0.5) 
-                              ? Colors.orange[900] 
-                              : Colors.green[900],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            
-            // Quiz description
-            if (quizData!['description'] != null && quizData!['description'].isNotEmpty)
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.all(16),
-                margin: EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: Colors.purple[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.purple[200]!),
-                ),
-                child: Text(
-                  quizData!['description'],
-                  style: TextStyle(fontSize: 16),
-                ),
-              ),
-
-            // Questions
-            ...questions.asMap().entries.map((entry) {
-              final index = entry.key;
-              final question = entry.value;
-              return Container(
-                margin: EdgeInsets.only(bottom: 24),
-                child: _buildQuestionWidget(question, index),
-              );
-            }).toList(),
-
-            SizedBox(height: 32),
-
-            // Submit button
-            Container(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: isSubmitting ? null : _submitQuiz,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.purple[600],
-                  foregroundColor: Colors.white,
-                  padding: EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: isSubmitting
-                    ? Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          ),
-                          SizedBox(width: 12),
-                          Text('Submitting...'),
-                        ],
-                      )
-                    : Text(
-                        currentUser == null
-                            ? 'Login to Submit Quiz'
-                            : 'Submit Quiz',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-              ),
-            ),
-
-            // Login prompt for non-authenticated users
-            if (currentUser == null)
-              Container(
-                width: double.infinity,
-                margin: EdgeInsets.only(top: 16),
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.orange[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orange[200]!),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.info_outline, color: Colors.orange[600]),
-                        SizedBox(width: 8),
-                        Text(
-                          'Login Required',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.orange[800],
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      'You need to login to submit this quiz. Your answers will be saved once you login.',
-                      style: TextStyle(color: Colors.orange[700]),
-                    ),
-                  ],
-                ),
-              ),
           ],
+        ),
+        body: Column(
+          children: [
+            if (settings.timeLimitMinutes != null)
+              LinearProgressIndicator(
+                value: 1 - (_remainingSeconds / (settings.timeLimitMinutes! * 60)),
+                backgroundColor: Colors.grey[200],
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  _remainingSeconds < 60 ? Colors.red : Colors.purple,
+                ),
+                minHeight: 4,
+              ),
+            if (settings.negativeMarking)
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+                color: Colors.red[50],
+                child: Text(
+                  '⚠️ Negative marking enabled: -${settings.negativeMarkingPoints} per wrong answer',
+                  style: TextStyle(color: Colors.red[900], fontSize: 11, fontWeight: FontWeight.w500),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            if (settings.enableTabRestriction)
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+                color: Colors.orange[50],
+                child: Text(
+                  'Tab Switches: $_tabSwitchCount / ${settings.maxTabSwitchCount ?? 5}',
+                  style: TextStyle(color: Colors.orange[900], fontSize: 11, fontWeight: FontWeight.w600),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            Expanded(
+              child: ListView.builder(
+                padding: EdgeInsets.all(16),
+                itemCount: _displayQuestions.length,
+                itemBuilder: (context, index) {
+                  return Container(
+                    margin: EdgeInsets.only(bottom: 24),
+                    child: _buildQuestionWidget(_displayQuestions[index], index),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+        bottomNavigationBar: SafeArea(
+          child: Container(
+            padding: EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: Offset(0, -5),
+                ),
+              ],
+            ),
+            child: ElevatedButton(
+              onPressed: isSubmitting ? null : _submitQuiz,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purple[600],
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+              child: isSubmitting
+                  ? SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(
+                      'Submit Quiz',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+            ),
+          ),
         ),
       ),
     );

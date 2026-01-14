@@ -42,42 +42,59 @@ class _FormDetailAnalyticsScreenState extends State<FormDetailAnalyticsScreen> {
     try {
       print('Loading detailed analytics for form: ${widget.formId}');
       
-      // Load form data
+      // Load form data to check if it's a quiz
       final formDoc = await FirebaseFirestore.instance
           .collection('forms')
           .doc(widget.formId)
           .get();
 
       if (!formDoc.exists) {
-        print('Form document not found: ${widget.formId}');
         throw Exception('Form not found');
       }
       
-      print('Form document found, loading questions...');
-
       final formData = formDoc.data()!;
+      final bool isQuiz = formData['isQuiz'] == true;
       final List questions = (formData['questions'] as List?) ?? [];
 
-      // Load responses
-      print('Loading responses for form: ${widget.formId}, owner: ${user.uid}');
+      // Load responses from the correct collection
+      final String collectionName = isQuiz ? 'quiz_responses' : 'responses';
+      final String formIdField = isQuiz ? 'quizId' : 'formId';
+      final String ownerIdField = isQuiz ? 'quizOwnerId' : 'formOwnerId';
+
+      print('Loading responses for $collectionName: ${widget.formId}');
       final responsesSnap = await FirebaseFirestore.instance
-          .collection('responses')
-          .where('formId', isEqualTo: widget.formId)
-          .where('formOwnerId', isEqualTo: user.uid)
+          .collection(collectionName)
+          .where(formIdField, isEqualTo: widget.formId)
+          .where(ownerIdField, isEqualTo: user.uid)
           .where('isDraft', isEqualTo: false)
           .get();
       
       print('Found ${responsesSnap.docs.length} responses');
 
       final List<Map<String, dynamic>> responses = [];
+      
+      // Stats for quizzes
+      double totalScoreSum = 0;
+      double? highestScore;
+      double? lowestScore;
+
       for (final doc in responsesSnap.docs) {
         final data = doc.data();
+        final score = isQuiz ? (data['score'] as num?)?.toDouble() : null;
+        
+        if (score != null) {
+          totalScoreSum += score;
+          if (highestScore == null || score > highestScore) highestScore = score;
+          if (lowestScore == null || score < lowestScore) lowestScore = score;
+        }
+
         responses.add({
           'id': doc.id,
           'userEmail': data['userEmail'] ?? 'Anonymous',
           'userName': data['userName'] ?? data['userEmail']?.split('@')[0] ?? 'Anonymous',
           'submittedAt': data['submittedAt'] as Timestamp?,
           'answers': data['answers'] ?? {},
+          'score': score,
         });
       }
       
@@ -88,7 +105,7 @@ class _FormDetailAnalyticsScreenState extends State<FormDetailAnalyticsScreen> {
         if (aTime == null && bTime == null) return 0;
         if (aTime == null) return 1;
         if (bTime == null) return -1;
-        return bTime.compareTo(aTime); // Descending order
+        return bTime.compareTo(aTime);
       });
 
       // Generate analytics
@@ -100,9 +117,22 @@ class _FormDetailAnalyticsScreenState extends State<FormDetailAnalyticsScreen> {
         questions,
       );
 
+      // Add quiz stats to analytics object
+      final enrichedAnalytics = FormAnalytics(
+        formId: analytics.formId,
+        title: analytics.title,
+        responseCount: analytics.responseCount,
+        numericAverages: analytics.numericAverages,
+        questionAnalytics: analytics.questionAnalytics,
+        isQuiz: isQuiz,
+        averageScore: responses.isNotEmpty && isQuiz ? totalScoreSum / responses.length : null,
+        highestScore: highestScore,
+        lowestScore: lowestScore,
+      );
+
       if (mounted) {
         setState(() {
-          _analytics = analytics;
+          _analytics = enrichedAnalytics;
           _responses = responses;
         });
       }
@@ -301,23 +331,47 @@ class _FormDetailAnalyticsScreenState extends State<FormDetailAnalyticsScreen> {
                         ),
                         title: Text(response['userName'] ?? 'Anonymous'),
                         subtitle: Text(response['userEmail'] ?? 'No email'),
-                        trailing: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.end,
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              formattedDate,
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              submittedAt != null
-                                  ? '${submittedAt.toDate().hour.toString().padLeft(2, '0')}:${submittedAt.toDate().minute.toString().padLeft(2, '0')}'
-                                  : '',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey[600],
+                            if (response['score'] != null) ...[
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue[50],
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: Colors.blue[100]!),
+                                ),
+                                child: Text(
+                                  '${(response['score'] as num).toStringAsFixed(0)}%',
+                                  style: TextStyle(
+                                    color: Colors.blue[800],
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
                               ),
+                              const SizedBox(width: 12),
+                            ],
+                            Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  formattedDate,
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  submittedAt != null
+                                      ? '${submittedAt.toDate().hour.toString().padLeft(2, '0')}:${submittedAt.toDate().minute.toString().padLeft(2, '0')}'
+                                      : '',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -740,23 +794,43 @@ class _FormDetailAnalyticsScreenState extends State<FormDetailAnalyticsScreen> {
             ),
           ),
           const SizedBox(width: 16),
-          Expanded(
-            child: _buildSummaryCard(
-              'Visualizable Questions',
-              _analytics!.questionAnalytics.where((q) => q.canBeVisualized()).length.toString(),
-              Icons.star,
-              Colors.orange,
+          if (_analytics!.isQuiz) ...[
+            Expanded(
+              child: _buildSummaryCard(
+                'Avg Score',
+                '${_analytics!.averageScore?.toStringAsFixed(1) ?? '0'}%',
+                Icons.analytics,
+                Colors.green,
+              ),
             ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: _buildSummaryCard(
-              'Avg Rating',
-              _getOverallAverageRating(),
-              Icons.analytics,
-              Colors.green,
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildSummaryCard(
+                'Highest Score',
+                '${_analytics!.highestScore?.toStringAsFixed(0) ?? '0'}%',
+                Icons.trending_up,
+                Colors.orange,
+              ),
             ),
-          ),
+          ] else ...[
+            Expanded(
+              child: _buildSummaryCard(
+                'Visualizable Questions',
+                _analytics!.questionAnalytics.where((q) => q.canBeVisualized()).length.toString(),
+                Icons.star,
+                Colors.orange,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildSummaryCard(
+                'Avg Rating',
+                _getOverallAverageRating(),
+                Icons.analytics,
+                Colors.green,
+              ),
+            ),
+          ],
         ],
       );
     }
@@ -1005,7 +1079,7 @@ class _FormDetailAnalyticsScreenState extends State<FormDetailAnalyticsScreen> {
     // Combine all question analytics
     for (final question in _analytics!.questionAnalytics) {
       if (question.canBeVisualized()) {
-        totalResponses += question.totalResponses;
+        totalResponses += question.totalResponses.toInt();
         
         // Combine response counts
         question.responseCounts.forEach((key, count) {
@@ -1015,7 +1089,7 @@ class _FormDetailAnalyticsScreenState extends State<FormDetailAnalyticsScreen> {
         // For rating questions, add to average calculation
         if (question.average != null && question.questionType == 'rating') {
           totalSum += question.average! * question.totalResponses;
-          totalCount += question.totalResponses;
+          totalCount += question.totalResponses.toInt();
         }
       }
     }

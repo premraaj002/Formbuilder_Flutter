@@ -57,7 +57,7 @@ class _TemplateSelectionScreenState extends State<TemplateSelectionScreen>
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (_) => widget.isQuiz
-            ? QuizBuilderScreen(template: template)
+            ? QuizBuilderScreen.withProvider(template: template)
             : FormBuilderScreen(template: template),
       ),
     );
